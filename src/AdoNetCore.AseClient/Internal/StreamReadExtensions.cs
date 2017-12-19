@@ -99,6 +99,12 @@ namespace AdoNetCore.AseClient.Internal
             return stream.ReadString(length, enc);
         }
 
+        public static string ReadIntLengthPrefixedString(this Stream stream, Encoding enc)
+        {
+            var length = stream.ReadInt();
+            return stream.ReadString(length, enc);
+        }
+
         public static string ReadString(this Stream stream, int length, Encoding enc)
         {
             if (length == 0)

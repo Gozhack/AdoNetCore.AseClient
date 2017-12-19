@@ -283,6 +283,34 @@ namespace AdoNetCore.AseClient.Internal
             return null;
         }
 
+        public void Prepare(AseCommand command)
+        {
+            //todo: merge into BuildCommandTokens
+            AssertExecutionStart();
+
+            SendPacket(new NormalPacket(
+                new Dynamic2Token
+                {
+                    OperationType = DynamicOperationType.TDS_DYN_PREPARE,
+                    Status = DynamicStatus.TDS_DYNAMIC_UNUSED,
+                    Id = "0",
+                    Statement = command.CommandText
+                }));
+
+            var doneHandler = new DoneTokenHandler();
+            var messageHandler = new MessageTokenHandler();
+
+            ReceiveTokens(
+                new EnvChangeTokenHandler(_environment),
+                messageHandler,
+                new ResponseParameterTokenHandler(command.AseParameters),
+                doneHandler);
+
+            AssertExecutionCompletion(doneHandler);
+
+            messageHandler.AssertNoErrors();
+        }
+
         public void Cancel()
         {
             if (TrySetState(InternalConnectionState.Canceled, s => s == InternalConnectionState.Active))
@@ -387,10 +415,17 @@ namespace AdoNetCore.AseClient.Internal
                 throw new NotImplementedException($"{command.CommandType} is not implemented");
             }
 
-            yield return command.CommandType == CommandType.StoredProcedure
-                ? BuildRpcToken(command)
-                : BuildLanguageToken(command);
-
+            if (command.PrepareStatus == PrepareStatus.NotEnabled)
+            {
+                yield return command.CommandType == CommandType.StoredProcedure
+                    ? BuildRpcToken(command)
+                    : BuildLanguageToken(command);
+            }
+            else
+            {
+                throw new NotImplementedException("Statement preparation/execution not supported");
+            }
+            
             foreach (var token in BuildParameterTokens(command.AseParameters))
             {
                 yield return token;

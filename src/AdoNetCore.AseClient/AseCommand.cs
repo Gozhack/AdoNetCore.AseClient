@@ -20,6 +20,7 @@ namespace AdoNetCore.AseClient
         private int _commandTimeout;
         private string _commandText;
         private UpdateRowSource _updatedRowSource;
+        internal PrepareStatus PrepareStatus = PrepareStatus.NotEnabled;
 
         public AseCommand(AseConnection connection)
         {
@@ -170,7 +171,7 @@ namespace AdoNetCore.AseClient
         }
 
         /// <summary>
-        /// Not implemented.
+        /// Setup a prepared command
         /// </summary>
         public override void Prepare()
         {
@@ -179,8 +180,18 @@ namespace AdoNetCore.AseClient
                 throw new ObjectDisposedException(nameof(AseCommand));
             }
 
-            // Support for prepared statements is not currently implemented. But to make this a drop in replacement for other DB Providers,
-            // it's better to treat this call as a no-op, than to throw a NotImplementedException.
+            //we'll focus just on Text for now
+            if (CommandType == CommandType.StoredProcedure || CommandType == CommandType.TableDirect)
+            {
+                return;
+            }
+
+            if (PrepareStatus != PrepareStatus.NotEnabled)
+            {
+                return;
+            }
+
+            PrepareStatus = PrepareStatus.Pending;
         }
 
         /// <summary>
@@ -202,6 +213,11 @@ namespace AdoNetCore.AseClient
                 if (_isDisposed)
                 {
                     throw new ObjectDisposedException(nameof(AseCommand));
+                }
+
+                if (PrepareStatus == PrepareStatus.Prepared)
+                {
+                    PrepareStatus = PrepareStatus.Dirty;
                 }
 
                 _commandText = value;
