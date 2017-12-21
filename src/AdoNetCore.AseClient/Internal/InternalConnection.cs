@@ -272,7 +272,7 @@ namespace AdoNetCore.AseClient.Internal
 
         public object ExecuteScalar(AseCommand command, AseTransaction transaction)
         {
-            using (var reader = (IDataReader)ExecuteReader(CommandBehavior.Default, command, transaction))
+            using (var reader = (IDataReader)ExecuteReader(CommandBehavior.SingleRow, command, transaction))
             {
                 if (reader.Read())
                 {
@@ -426,7 +426,7 @@ namespace AdoNetCore.AseClient.Internal
                 throw new NotImplementedException("Statement preparation/execution not supported");
             }
             
-            foreach (var token in BuildParameterTokens(command.AseParameters))
+            foreach (var token in BuildParameterTokens(command.AseParameters, command.NamedParameters))
             {
                 yield return token;
             }
@@ -450,7 +450,8 @@ namespace AdoNetCore.AseClient.Internal
             };
         }
 
-        private IToken[] BuildParameterTokens(AseParameterCollection parameters)
+        // TODO - if namedParameters is false, then look for ? characters in the command, and bind the parameters by position.
+        private IToken[] BuildParameterTokens(AseParameterCollection parameters, bool namedParameters)
         {
             var formatItems = new List<FormatItem>();
             var parameterItems = new List<ParametersToken.Parameter>();
