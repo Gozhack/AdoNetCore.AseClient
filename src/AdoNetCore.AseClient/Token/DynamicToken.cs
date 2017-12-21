@@ -27,59 +27,81 @@ namespace AdoNetCore.AseClient.Token
         public void Write(Stream stream, Encoding enc)
         {
             Logger.Instance?.WriteLine($"-> {Type}: {OperationType}, {Status}, {Id}");
+            using (var ms = new MemoryStream())
+            {
+                WriteInternal(ms);
+
+                ms.Seek(0, SeekOrigin.Begin);
+
+                var bytes = ms.ToArray();
+                var totalLength = Type == TokenType.TDS_DYNAMIC2
+                    ? bytes.Length
+                    : (short)bytes.Length;
+
+                stream.WriteByte((byte)Type);
+                if (Type == TokenType.TDS_DYNAMIC2)
+                {
+                    stream.WriteInt(totalLength);
+                }
+                else
+                {
+                    stream.WriteShort((short)totalLength);
+                }
+
+                stream.Write(bytes, 0, totalLength);
+            }
+        }
+
+        private void WriteInternal(MemoryStream stream)
+        {
             var id = Encoding.ASCII.GetBytes(Id);
             var idLen = (byte)id.Length;
-            var statement = Encoding.ASCII.GetBytes(Statement);
-            var statementLen = Type == TokenType.TDS_DYNAMIC2
-                ? statement.Length
-                : (short) statement.Length;
-
-            var totalLength = Type == TokenType.TDS_DYNAMIC2
-                ? 7 + idLen + statementLen
-                : (short) (5 + idLen + statementLen);
-            
-            stream.WriteByte((byte)Type);
-            if (Type == TokenType.TDS_DYNAMIC2)
-            {
-                stream.WriteInt(totalLength);
-            }
-            else
-            {
-                stream.WriteShort((short) totalLength);
-            }
 
             stream.WriteByte((byte)OperationType);
             stream.WriteByte((byte)Status);
             stream.WriteByte(idLen);
             stream.Write(id, 0, idLen);
 
+            WriteStatement(stream);
+        }
+
+        private void WriteStatement(MemoryStream stream)
+        {
+            if (OperationType != DynamicOperationType.TDS_DYN_PREPARE && OperationType != DynamicOperationType.TDS_DYN_EXEC_IMMED)
+            {
+                return;
+            }
+
+            var statement = Encoding.ASCII.GetBytes(Statement ?? string.Empty);
+
             if (Type == TokenType.TDS_DYNAMIC2)
             {
-                stream.WriteInt(statementLen);
+                stream.WriteInt(statement.Length);
+                stream.Write(statement, 0, statement.Length);
             }
             else
             {
-                stream.WriteShort((short)statementLen);
+                stream.WriteShort((short)statement.Length);
+                stream.Write(statement, 0, (short)statement.Length);
             }
-
-            stream.Write(statement, 0, statementLen);
         }
 
         public void Read(Stream stream, Encoding enc, IFormatToken previousFormatToken)
         {
-            var remainingLength = Type == TokenType.TDS_DYNAMIC2 ? stream.ReadInt() : stream.ReadShort();
+            var remainingLength = Type == TokenType.TDS_DYNAMIC2
+                ? stream.ReadInt()
+                : stream.ReadShort();
+
             using (var ts = new ReadablePartialStream(stream, remainingLength))
             {
-                OperationType = (DynamicOperationType) ts.ReadByte();
-                Status = (DynamicStatus) ts.ReadByte();
-                Id = stream.ReadByteLengthPrefixedString(Encoding.ASCII);
-                if (Type == TokenType.TDS_DYNAMIC2)
+                OperationType = (DynamicOperationType)ts.ReadByte();
+                Status = (DynamicStatus)ts.ReadByte();
+                Id = ts.ReadByteLengthPrefixedString(Encoding.ASCII);
+                if (ts.Position < ts.Length)
                 {
-                    Statement = stream.ReadIntLengthPrefixedString(Encoding.ASCII);
-                }
-                else
-                {
-                    Statement = stream.ReadShortLengthPrefixedString(Encoding.ASCII);
+                    Statement = Type == TokenType.TDS_DYNAMIC2
+                        ? ts.ReadIntLengthPrefixedString(Encoding.ASCII)
+                        : ts.ReadShortLengthPrefixedString(Encoding.ASCII);
                 }
             }
 

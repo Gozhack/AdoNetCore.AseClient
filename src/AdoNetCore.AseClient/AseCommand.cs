@@ -23,7 +23,8 @@ namespace AdoNetCore.AseClient
         private int _commandTimeout;
         private string _commandText;
         private UpdateRowSource _updatedRowSource;
-        internal PrepareStatus PrepareStatus = PrepareStatus.NotEnabled;
+        internal PrepareStatus PrepareStatus { get; private set; } = PrepareStatus.NotEnabled;
+        internal string PrepareId { get; private set; }
 
         public AseCommand(AseConnection connection)
         {
@@ -190,12 +191,26 @@ namespace AdoNetCore.AseClient
                 return;
             }
 
-            if (PrepareStatus != PrepareStatus.NotEnabled)
+            if (PrepareStatus.CanTransitionTo(PrepareStatus.Pending))
             {
-                return;
+                PrepareId = "1";//Guid.NewGuid().ToString("N");
+                PrepareStatus = PrepareStatus.Pending;
             }
 
-            PrepareStatus = PrepareStatus.Pending;
+            if (IsPreparationRequired)
+            {
+                _connection.InternalConnection.Prepare(this);
+            }
+        }
+
+        internal bool IsPreparationRequired => PrepareStatus == PrepareStatus.Dirty || PrepareStatus == PrepareStatus.Pending;
+
+        internal void MarkPrepared()
+        {
+            if (PrepareStatus.CanTransitionTo(PrepareStatus.Prepared))
+            {
+                PrepareStatus = PrepareStatus.Prepared;
+            }
         }
 
         /// <summary>
@@ -219,7 +234,7 @@ namespace AdoNetCore.AseClient
                     throw new ObjectDisposedException(nameof(AseCommand));
                 }
 
-                if (PrepareStatus == PrepareStatus.Prepared)
+                if (PrepareStatus.CanTransitionTo(PrepareStatus.Dirty))
                 {
                     PrepareStatus = PrepareStatus.Dirty;
                 }

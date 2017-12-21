@@ -74,6 +74,11 @@ namespace AdoNetCore.AseClient.Interface
         object ExecuteScalar(AseCommand command, AseTransaction transaction);
 
         /// <summary>
+        /// Prepare an AseCommand for later execution
+        /// </summary>
+        void Prepare(AseCommand command);
+
+        /// <summary>
         /// Cancel the currently running command
         /// </summary>
         void Cancel();

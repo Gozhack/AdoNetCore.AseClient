@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 using AdoNetCore.AseClient.Enum;
 using AdoNetCore.AseClient.Interface;
@@ -238,7 +239,8 @@ namespace AdoNetCore.AseClient.Internal
             }
             catch (AggregateException ae)
             {
-                throw ae.InnerException;
+                ExceptionDispatchInfo.Capture(ae.InnerException).Throw();
+                throw; //because the above .Throw(); doesn't get detected, causing a "not all code paths return" error
             }
         }
 
@@ -259,7 +261,8 @@ namespace AdoNetCore.AseClient.Internal
             }
             catch (AggregateException ae)
             {
-                throw ae.InnerException;
+                ExceptionDispatchInfo.Capture(ae.InnerException).Throw();
+                throw; //because the above .Throw(); doesn't get detected, causing a "not all code paths return" error
             }
         }
 
@@ -288,27 +291,25 @@ namespace AdoNetCore.AseClient.Internal
             //todo: merge into BuildCommandTokens
             AssertExecutionStart();
 
-            SendPacket(new NormalPacket(
-                new Dynamic2Token
-                {
-                    OperationType = DynamicOperationType.TDS_DYN_PREPARE,
-                    Status = DynamicStatus.TDS_DYNAMIC_UNUSED,
-                    Id = "0",
-                    Statement = command.CommandText
-                }));
+            SendPacket(new NormalPacket(BuildPreparedStatementPreparationToken(command)));
 
             var doneHandler = new DoneTokenHandler();
             var messageHandler = new MessageTokenHandler();
+            var prepareHandler = new PrepareTokenHandler();
 
             ReceiveTokens(
                 new EnvChangeTokenHandler(_environment),
                 messageHandler,
-                new ResponseParameterTokenHandler(command.AseParameters),
+                prepareHandler,
                 doneHandler);
 
             AssertExecutionCompletion(doneHandler);
 
             messageHandler.AssertNoErrors();
+
+            prepareHandler.AssertAcknowledgement();
+            
+            command.MarkPrepared();
         }
 
         public void Cancel()
@@ -415,6 +416,12 @@ namespace AdoNetCore.AseClient.Internal
                 throw new NotImplementedException($"{command.CommandType} is not implemented");
             }
 
+            if (command.IsPreparationRequired)
+            {
+                //todo: look into doing the prepare() call ourselves. May need to worry about cancellation
+                throw new AseException("Cannot execute unprepared statement");
+            }
+
             if (command.PrepareStatus == PrepareStatus.NotEnabled)
             {
                 yield return command.CommandType == CommandType.StoredProcedure
@@ -423,10 +430,10 @@ namespace AdoNetCore.AseClient.Internal
             }
             else
             {
-                throw new NotImplementedException("Statement preparation/execution not supported");
+                yield return BuildPreparedStatementExecutionToken(command);
             }
             
-            foreach (var token in BuildParameterTokens(command.AseParameters, command.NamedParameters))
+            foreach (var token in BuildParameterTokens(command.AseParameters, command.NamedParameters, command.PrepareStatus != PrepareStatus.NotEnabled))
             {
                 yield return token;
             }
@@ -450,8 +457,31 @@ namespace AdoNetCore.AseClient.Internal
             };
         }
 
+        private IToken BuildPreparedStatementExecutionToken(AseCommand command)
+        {
+            return new Dynamic2Token
+            {
+                Id = command.PrepareId,
+                OperationType = DynamicOperationType.TDS_DYN_EXEC,
+                Status = command.HasSendableParameters
+                    ? DynamicStatus.TDS_DYNAMIC_HASARGS
+                    : DynamicStatus.TDS_DYNAMIC_UNUSED
+            };
+        }
+
+        private IToken BuildPreparedStatementPreparationToken(AseCommand command)
+        {
+            return new Dynamic2Token
+            {
+                Id = command.PrepareId,
+                OperationType = DynamicOperationType.TDS_DYN_PREPARE,
+                Statement = command.CommandText,
+                Status = DynamicStatus.TDS_DYNAMIC_UNUSED
+            };
+        }
+
         // TODO - if namedParameters is false, then look for ? characters in the command, and bind the parameters by position.
-        private IToken[] BuildParameterTokens(AseParameterCollection parameters, bool namedParameters)
+        private IToken[] BuildParameterTokens(AseParameterCollection parameters, bool namedParameters, bool suppressParameterNames)
         {
             var formatItems = new List<FormatItem>();
             var parameterItems = new List<ParametersToken.Parameter>();
@@ -462,7 +492,9 @@ namespace AdoNetCore.AseClient.Internal
                 var length = TypeMap.GetFormatLength(parameterType, parameter, _environment.Encoding);
                 var formatItem = new FormatItem
                 {
-                    ParameterName = parameter.ParameterName,
+                    ParameterName = suppressParameterNames
+                        ? null
+                        : parameter.ParameterName,
                     DataType = TypeMap.GetTdsDataType(parameterType, parameter.Value, length),
                     IsOutput = parameter.IsOutput,
                     IsNullable = parameter.IsNullable,

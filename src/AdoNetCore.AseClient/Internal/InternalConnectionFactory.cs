@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using AdoNetCore.AseClient.Interface;
@@ -80,7 +81,7 @@ namespace AdoNetCore.AseClient.Internal
             }
             catch (AggregateException ae)
             {
-                throw ae.InnerException;
+                ExceptionDispatchInfo.Capture(ae.InnerException).Throw();
             }
 
             if (dnsTask.IsCanceled)

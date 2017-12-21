@@ -26,12 +26,15 @@ namespace AdoNetCore.AseClient.Tests.Integration
             {
                 connection.Open();
                 command.CommandType = CommandType.Text;
-
                 command.CommandText = "select 1";
+
                 command.Prepare();
 
-                var result = command.ExecuteScalar();
-                Assert.AreEqual(1, Convert.ToInt32(result));
+                Assert.AreEqual(1, Convert.ToInt32(command.ExecuteScalar()));
+                Assert.AreEqual(1, Convert.ToInt32(command.ExecuteScalar()));
+                Assert.AreEqual(1, Convert.ToInt32(command.ExecuteScalar()));
+                Assert.AreEqual(1, Convert.ToInt32(command.ExecuteScalar()));
+                Assert.AreEqual(1, Convert.ToInt32(command.ExecuteScalar()));
             }
         }
     }

@@ -18,14 +18,15 @@ namespace AdoNetCore.AseClient.Internal
             }
         }
 
-        public static void Enable(bool toConsole = true, bool toDebug = false, bool timestamps = false)
+        public static void Enable(bool toConsole = true, bool toDebug = false, bool timestamps = false, bool hexDumps = false)
         {
 #if DEBUG
             _instance = new Logger
             {
                 ToConsole = toConsole,
                 ToDebug = toDebug,
-                Timestamps = timestamps
+                Timestamps = timestamps,
+                HexDumps = hexDumps
             };
 #endif
         }
@@ -38,6 +39,7 @@ namespace AdoNetCore.AseClient.Internal
         private bool ToConsole { get; set; } = true;
         private bool ToDebug { get; set; }
         private bool Timestamps { get; set; } = true;
+        private bool HexDumps { get; set; }
 
         private bool _lineStart = true;
 
@@ -66,6 +68,31 @@ namespace AdoNetCore.AseClient.Internal
             if (ToConsole) Console.Write(formatted);
             if(ToDebug) Debug.Write(formatted);
             _lineStart = false;
+        }
+
+        public void DumpBytes(byte[] bytes, int length)
+        {
+            if (bytes.Length == length)
+            {
+                DumpBytes(bytes);
+                return;
+            }
+
+            if (HexDumps)
+            {
+                var buffer = new byte[length];
+                Array.Copy(bytes, buffer, length);
+                DumpBytes(buffer);
+            }
+        }
+
+        public void DumpBytes(byte[] bytes)
+        {
+            if (HexDumps)
+            {
+                Write(Environment.NewLine);
+                Write(HexDump.Dump(bytes));
+            }
         }
     }
 }

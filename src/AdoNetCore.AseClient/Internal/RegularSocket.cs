@@ -11,7 +11,6 @@ namespace AdoNetCore.AseClient.Internal
     {
         private readonly Socket _inner;
         private readonly ITokenParser _parser;
-        private readonly bool _hexDump = false;
 
         public DateTime LastActive { get; private set; }
 
@@ -60,7 +59,7 @@ namespace AdoNetCore.AseClient.Internal
                             buffer[2] = (byte) (chunkLength >> 8);
                             buffer[3] = (byte) chunkLength;
 
-                            DumpBytes(buffer, chunkLength);
+                            Logger.Instance?.DumpBytes(buffer, chunkLength);
 
                             _inner.EnsureSend(buffer, 0, chunkLength);
                         }
@@ -80,7 +79,7 @@ namespace AdoNetCore.AseClient.Internal
             buffer[2] = (byte) (buffer.Length >> 8);
             buffer[3] = (byte) buffer.Length;
 
-            DumpBytes(buffer);
+            Logger.Instance?.DumpBytes(buffer);
 
             _inner.EnsureSend(buffer, 0, buffer.Length);
         }
@@ -123,35 +122,13 @@ namespace AdoNetCore.AseClient.Internal
 
                 ms.Seek(0, SeekOrigin.Begin);
 
+                Logger.Instance?.DumpBytes(ms.ToArray());
+
                 LastActive = DateTime.UtcNow;
                 return _parser.Parse(ms, env.Encoding);
             }
         }
 
-        private void DumpBytes(byte[] bytes, int length)
-        {
-            if (bytes.Length == length)
-            {
-                DumpBytes(bytes);
-                return;
-            }
-
-            if (_hexDump)
-            {
-                var buffer = new byte[length];
-                Array.Copy(bytes, buffer, length);
-                Logger.Instance?.Write(Environment.NewLine);
-                Logger.Instance?.Write(HexDump.Dump(bytes));
-            }
-        }
-
-        private void DumpBytes(byte[] bytes)
-        {
-            if (_hexDump)
-            {
-                Logger.Instance?.Write(Environment.NewLine);
-                Logger.Instance?.Write(HexDump.Dump(bytes));
-            }
-        }
+        
     }
 }
